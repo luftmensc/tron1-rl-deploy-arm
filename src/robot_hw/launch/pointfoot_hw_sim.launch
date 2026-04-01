@@ -14,4 +14,9 @@
   <rosparam file="$(find robot_hw)/config/robot_hw.yaml" command="load"/>
   <rosparam file="$(find robot_hw)/config/joystick.yaml" command="load"/>
   <node name="pointfoot_hw" pkg="robot_hw" type="pointfoot_node" respawn="false" clear_params="true" required="true" output="screen" args="127.0.0.1" />
+  
+  <!-- Spawn joint_state_controller so PointfootHW publishes /joint_states -->
+  <node ns="pointfoot_hw" name="joint_state_controller_spawner" pkg="controller_manager" type="spawner"
+        respawn="false" output="screen" args="/controllers/joint_state_controller" />
+
 </launch>
