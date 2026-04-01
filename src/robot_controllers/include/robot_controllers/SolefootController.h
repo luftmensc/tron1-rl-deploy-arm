@@ -71,6 +71,7 @@ protected:
 
   void cmdVelCallback(const geometry_msgs::TwistConstPtr &msg) override;
   void EEPoseCmdRCCallback(const std_msgs::Float32MultiArrayConstPtr &msg);
+  void EEPoseCmdAbsCallback(const std_msgs::Float32MultiArrayConstPtr &msg);
 
   void handleExtraCommands();
 
@@ -109,9 +110,13 @@ private:
   ros::Publisher obs_debug_pub_;
   std_msgs::Float32MultiArray obs_debug_msg_;
 
+  ros::Publisher ee_pose_pub_;
+  std_msgs::Float32MultiArray ee_pose_msg_;
+
   geometry_msgs::Pose ee_pos_cmd_debug_msg_;
 
   ros::Subscriber ee_pos_cmd_rc_delta_;
+  ros::Subscriber ee_pos_cmd_abs_;
   std_msgs::Float32MultiArray ee_pos_cmd_rc_delta_msg_;
   RCEECmd rc_ee_cmd;
   // File path for policy model
@@ -193,6 +198,9 @@ private:
   vector3_t lastEePos_, lastEeRpy_;
 
   bool armHoldStill_{false};
+  ros::Time lastEeCmdTime_;
+  double armStillTimeout_{1.0};
+
   bool stopJointAnglesUpdated_{false};
   bool needDamping_{false};
   bool isNoCommand_{false};

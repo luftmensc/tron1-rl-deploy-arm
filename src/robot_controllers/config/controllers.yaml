@@ -7,3 +7,7 @@ controllers:
 
   solefoot_controller:
     type: robot_controller/SolefootController
+
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50

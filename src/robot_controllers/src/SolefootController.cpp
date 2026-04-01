@@ -27,10 +27,25 @@ bool SolefootController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHa
   // register publishers and subscribers
   gripper_cmd_pub_ = nh_.advertise<std_msgs::Bool>("/gripper_cmd", false, 10);
   obs_debug_pub_ = nh_.advertise<std_msgs::Float32MultiArray>("/obs_debug_info", false, 10);
+  ee_pose_pub_ = nh_.advertise<std_msgs::Float32MultiArray>("/ee_pose_state", 10);
+  ee_pose_msg_.data.resize(7);
+  
 
   ee_pos_cmd_rc_delta_ = nh_.subscribe<std_msgs::Float32MultiArray>("/EEPose_cmd_rc", 10, &SolefootController::EEPoseCmdRCCallback, this);
+  ee_pos_cmd_abs_ = nh_.subscribe<std_msgs::Float32MultiArray>("/EEPose_cmd_abs", 10, &SolefootController::EEPoseCmdAbsCallback, this);
   ee_pos_cmd_rc_delta_msg_.data.resize(6+1);
   rc_ee_cmd.zero();
+
+    //initialize the rcs_ee_cmd with initial position and gripper state [0.0, -0.39000001549720764, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+  // rc_ee_cmd.ee_position[0] = 0.0;
+  // rc_ee_cmd.ee_position[1] = -0.39000001549720764;
+  // rc_ee_cmd.ee_position[2] = 0.0;
+  // rc_ee_cmd.ee_rpy[0] = 0.0;
+  // rc_ee_cmd.ee_rpy[1] = 0.0;
+  // rc_ee_cmd.ee_rpy[2] = 0.0;
+  // rc_ee_cmd.gripper_cmd = false;
+  lastEeCmdTime_ = ros::Time::now();
   return ControllerBase::init(robot_hw, nh);
 }
 
@@ -572,15 +587,30 @@ void SolefootController::computeObservation() {
   ee_rpy << ee_init_rpy_[0] + rc_ee_cmd.ee_rpy[1], 
             ee_init_rpy_[1] + rc_ee_cmd.ee_rpy[2], 
             ee_init_rpy_[2] + rc_ee_cmd.ee_rpy[0];
-  // if ee_pos change is lower than 0.03 and ee_rpy change is lower than 0.01, regard as still
-  if ((ee_pos - lastEePos_).norm() < 0.03 && (ee_rpy - lastEeRpy_).norm() < 0.01) {
-    armHoldStill_ = true;
-  }
-  else {
-    armHoldStill_ = false;
-  }
+  // Time-based stillness: arm is "still" only when no EE command received recently.
+  // During trajectory execution the planner continuously publishes targets,
+  // keeping armHoldStill_ false so the policy runs with full stiffness.
+  armHoldStill_ = false;//(ros::Time::now() - lastEeCmdTime_).toSec() > armStillTimeout_;
   lastEePos_ = ee_pos;
   lastEeRpy_ = ee_rpy;
+
+  // Publish EE pose state for external planners
+  // ee_pose_msg_.data[0] = rc_ee_cmd.ee_position[0];
+  // ee_pose_msg_.data[1] = rc_ee_cmd.ee_position[1];
+  // ee_pose_msg_.data[2] = rc_ee_cmd.ee_position[2];
+  // ee_pose_msg_.data[3] = rc_ee_cmd.ee_rpy[0];
+  // ee_pose_msg_.data[4] = rc_ee_cmd.ee_rpy[1];
+  // ee_pose_msg_.data[5] = rc_ee_cmd.ee_rpy[2];
+  // ee_pose_msg_.data[6] = armHoldStill_ ? 1.0 : 0.0;
+  // fill ee_pose_msg_ with ee_pos and ee_rpy for debug
+  ee_pose_msg_.data[0] = ee_pos[0];
+  ee_pose_msg_.data[1] = ee_pos[1];
+  ee_pose_msg_.data[2] = ee_pos[2];
+  ee_pose_msg_.data[3] = ee_rpy[0];
+  ee_pose_msg_.data[4] = ee_rpy[1];
+  ee_pose_msg_.data[5] = ee_rpy[2];
+  
+  ee_pose_pub_.publish(ee_pose_msg_);
   ee_quat = getQuaternionFromRpy(ee_rpy);
   if(ee_quat.w() < 0){
     ee_quat_vec << -ee_quat.w(), -ee_quat.x(), -ee_quat.y(), -ee_quat.z();
@@ -822,6 +852,10 @@ double SolefootController::sliding_window(std::vector<double>& data, int window_
 
 void SolefootController::EEPoseCmdRCCallback(const std_msgs::Float32MultiArrayConstPtr &msg)
 {
+  if (msg->data.size() < 7) {
+    ROS_WARN_THROTTLE(2.0, "EEPose_cmd_rc expects at least 7 elements: [dx,dy,dz,dr,dp,dyaw,gripper,(optional stop)]");
+    return;
+  }
   if (msg->data.size() == 8 && msg->data[7] == -1) {
     mode_ = Mode::SOLE_STOP;
   }
@@ -830,7 +864,7 @@ void SolefootController::EEPoseCmdRCCallback(const std_msgs::Float32MultiArrayCo
   rc_ee_cmd.ee_position[1] += msg->data[1];
   rc_ee_cmd.ee_position[2] += msg->data[2];
 
-  rc_ee_cmd.ee_position[0] = std::min(0.6-ee_init_pos_[0], std::max(0.0-ee_init_pos_[0], rc_ee_cmd.ee_position[0]));
+  rc_ee_cmd.ee_position[0] = std::min(0.8-ee_init_pos_[0], std::max(0.0-ee_init_pos_[0], rc_ee_cmd.ee_position[0]));
   rc_ee_cmd.ee_position[1] = std::min(0.5-ee_init_pos_[1], std::max(-0.5-ee_init_pos_[1], rc_ee_cmd.ee_position[1]));
   rc_ee_cmd.ee_position[2] = std::min(0.5-ee_init_pos_[2], std::max(-0.3-ee_init_pos_[2], rc_ee_cmd.ee_position[2]));
 
@@ -843,6 +877,38 @@ void SolefootController::EEPoseCmdRCCallback(const std_msgs::Float32MultiArrayCo
   gripper_cmd_msg_.data = rc_ee_cmd.gripper_cmd;
   
   gripper_cmd_pub_.publish(gripper_cmd_msg_);
+  lastEeCmdTime_ = ros::Time::now();
+}
+
+void SolefootController::EEPoseCmdAbsCallback(const std_msgs::Float32MultiArrayConstPtr &msg)
+{
+  if (msg->data.size() < 7) {
+    ROS_WARN_THROTTLE(2.0, "EEPose_cmd_abs expects at least 7 elements: [x_off,y_off,z_off,r_off,p_off,yaw_off,gripper,(optional stop)]");
+    return;
+  }
+  if (msg->data.size() == 8 && msg->data[7] == -1) {
+    mode_ = Mode::SOLE_STOP;
+  }
+
+  // SET directly instead of accumulating
+  rc_ee_cmd.ee_position[0] = msg->data[0];
+  rc_ee_cmd.ee_position[1] = msg->data[1];
+  rc_ee_cmd.ee_position[2] = msg->data[2];
+
+  // Clamp (same limits as delta callback)
+  rc_ee_cmd.ee_position[0] = std::min(0.8-ee_init_pos_[0], std::max(0.0-ee_init_pos_[0], rc_ee_cmd.ee_position[0]));
+  rc_ee_cmd.ee_position[1] = std::min(0.5-ee_init_pos_[1], std::max(-0.5-ee_init_pos_[1], rc_ee_cmd.ee_position[1]));
+  rc_ee_cmd.ee_position[2] = std::min(0.5-ee_init_pos_[2], std::max(-0.3-ee_init_pos_[2], rc_ee_cmd.ee_position[2]));
+
+  rc_ee_cmd.ee_rpy[0] = msg->data[3];
+  rc_ee_cmd.ee_rpy[1] = msg->data[4];
+  rc_ee_cmd.ee_rpy[2] = msg->data[5];
+
+  rc_ee_cmd.gripper_cmd = msg->data[6];
+
+  gripper_cmd_msg_.data = rc_ee_cmd.gripper_cmd;
+  gripper_cmd_pub_.publish(gripper_cmd_msg_);
+  lastEeCmdTime_ = ros::Time::now();
 }
 } // namespace
 
