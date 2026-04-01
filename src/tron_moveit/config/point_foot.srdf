@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--This does not replace URDF, and is not an extension of URDF.
+    This is a format for representing semantic information about the robot structure.
+    A URDF file must exist for this robot as well, where the joints and the links that are referenced are defined
+-->
+<robot name="point_foot">
+    <!--GROUPS: Representation of a set of joints and links. This can be useful for specifying DOF to plan for, defining arms, end effectors, etc-->
+    <!--LINKS: When a link is specified, the parent joint of that link (if it exists) is automatically included-->
+    <!--JOINTS: When a joint is specified, the child link of that joint (which will always exist) is automatically included-->
+    <!--CHAINS: When a chain is specified, all the links along the chain (including endpoints) are included in the group. Additionally, all the joints that are parents to included links are also included. This means that joints along the chain and the parent joint of the base link are included in the group-->
+    <!--SUBGROUPS: Groups can also be formed by referencing to already defined group names-->
+    <group name="arm">
+        <chain base_link="airbot_arm_base" tip_link="link6"/>
+    </group>
+    <!--GROUP STATES: Purpose: Define a named state for a particular group, in terms of joint values. This is useful to define states like 'folded arms'-->
+    <group_state name="aware" group="arm">
+        <joint name="J1" value="0"/>
+        <joint name="J2" value="-0.3886"/>
+        <joint name="J3" value="0.8464"/>
+        <joint name="J4" value="1.776"/>
+        <joint name="J5" value="-0.2623"/>
+        <joint name="J6" value="-1.6521"/>
+    </group_state>
+    <group_state name="initial" group="arm">
+        <joint name="J1" value="0"/>
+        <joint name="J2" value="-0.1189"/>
+        <joint name="J3" value="0.1812"/>
+        <joint name="J4" value="0"/>
+        <joint name="J5" value="0"/>
+        <joint name="J6" value="0"/>
+    </group_state>
+    <group_state name="up" group="arm">
+        <joint name="J1" value="0"/>
+        <joint name="J2" value="-0.5007"/>
+        <joint name="J3" value="1.4846"/>
+        <joint name="J4" value="1.5756"/>
+        <joint name="J5" value="-0.969"/>
+        <joint name="J6" value="0.1836"/>
+    </group_state>
+    <group_state name="front_reach" group="arm">
+        <joint name="J1" value="0.1267"/>
+        <joint name="J2" value="-1.8625"/>
+        <joint name="J3" value="1.3589"/>
+        <joint name="J4" value="1.6145"/>
+        <joint name="J5" value="0.5649"/>
+        <joint name="J6" value="-1.7127"/>
+    </group_state>
+    <group_state name="start" group="arm">
+        <joint name="J1" value="-0.111"/>
+        <joint name="J2" value="-1.021"/>
+        <joint name="J3" value="0.311"/>
+        <joint name="J4" value="1.286"/>
+        <joint name="J5" value="0.812"/>
+        <joint name="J6" value="-1.406"/>
+    </group_state>
+    <group_state name="first" group="arm">
+        <joint name="J1" value="-0.111"/>
+        <joint name="J2" value="-0.811"/>
+        <joint name="J3" value="0.487"/>
+        <joint name="J4" value="1.286"/>
+        <joint name="J5" value="-0.315"/>
+        <joint name="J6" value="-1.406"/>
+    </group_state>
+    <group_state name="second" group="arm">
+        <joint name="J1" value="-0.628"/>
+        <joint name="J2" value="-1.006"/>
+        <joint name="J3" value="0.46"/>
+        <joint name="J4" value="1.488"/>
+        <joint name="J5" value="0.531"/>
+        <joint name="J6" value="0.071"/>
+    </group_state>
+
+    <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
+    <disable_collisions link1="abad_L_Link" link2="abad_R_Link" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="airbot_arm" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="airbot_arm_base" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="ankle_R_Link" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="base_Link" reason="Adjacent"/>
+    <disable_collisions link1="abad_L_Link" link2="hip_L_Link" reason="Adjacent"/>
+    <disable_collisions link1="abad_L_Link" link2="hip_R_Link" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="knee_L_Link" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="knee_R_Link" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="abad_L_Link" link2="link3" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="airbot_arm" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="airbot_arm_base" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="ankle_L_Link" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="base_Link" reason="Adjacent"/>
+    <disable_collisions link1="abad_R_Link" link2="hip_L_Link" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="hip_R_Link" reason="Adjacent"/>
+    <disable_collisions link1="abad_R_Link" link2="knee_L_Link" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="knee_R_Link" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="abad_R_Link" link2="link3" reason="Never"/>
+    <disable_collisions link1="airbot_arm" link2="airbot_arm_base" reason="Adjacent"/>
+    <disable_collisions link1="airbot_arm" link2="ankle_L_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm" link2="ankle_R_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm" link2="base_Link" reason="Default"/>
+    <disable_collisions link1="airbot_arm" link2="hip_L_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm" link2="hip_R_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm" link2="knee_L_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm" link2="knee_R_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="airbot_arm" link2="link1" reason="Adjacent"/>
+    <disable_collisions link1="airbot_arm" link2="link2" reason="Default"/>
+    <disable_collisions link1="airbot_arm" link2="link4" reason="Default"/>
+    <disable_collisions link1="airbot_arm_base" link2="ankle_L_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="ankle_R_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="base_Link" reason="Adjacent"/>
+    <disable_collisions link1="airbot_arm_base" link2="hip_L_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="hip_R_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="knee_L_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="knee_R_Link" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="link1" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="link2" reason="Never"/>
+    <disable_collisions link1="airbot_arm_base" link2="link4" reason="Default"/>
+    <disable_collisions link1="ankle_L_Link" link2="hip_L_Link" reason="Never"/>
+    <disable_collisions link1="ankle_L_Link" link2="hip_R_Link" reason="Never"/>
+    <disable_collisions link1="ankle_L_Link" link2="knee_L_Link" reason="Adjacent"/>
+    <disable_collisions link1="ankle_L_Link" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="ankle_L_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="ankle_L_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="ankle_L_Link" link2="link3" reason="Never"/>
+    <disable_collisions link1="ankle_R_Link" link2="hip_R_Link" reason="Never"/>
+    <disable_collisions link1="ankle_R_Link" link2="knee_R_Link" reason="Adjacent"/>
+    <disable_collisions link1="ankle_R_Link" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="ankle_R_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="ankle_R_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="ankle_R_Link" link2="link3" reason="Never"/>
+    <disable_collisions link1="ankle_R_Link" link2="link4" reason="Never"/>
+    <disable_collisions link1="base_Link" link2="hip_L_Link" reason="Never"/>
+    <disable_collisions link1="base_Link" link2="hip_R_Link" reason="Never"/>
+    <disable_collisions link1="base_Link" link2="knee_L_Link" reason="Never"/>
+    <disable_collisions link1="base_Link" link2="knee_R_Link" reason="Never"/>
+    <disable_collisions link1="base_Link" link2="limx_imu" reason="Adjacent"/>
+    <disable_collisions link1="base_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="base_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="base_Link" link2="link4" reason="Default"/>
+    <disable_collisions link1="hip_L_Link" link2="knee_L_Link" reason="Adjacent"/>
+    <disable_collisions link1="hip_L_Link" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="hip_L_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="hip_L_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="hip_R_Link" link2="knee_L_Link" reason="Never"/>
+    <disable_collisions link1="hip_R_Link" link2="knee_R_Link" reason="Adjacent"/>
+    <disable_collisions link1="hip_R_Link" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="hip_R_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="hip_R_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="knee_L_Link" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="knee_L_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="knee_L_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="knee_L_Link" link2="link3" reason="Never"/>
+    <disable_collisions link1="knee_R_Link" link2="limx_imu" reason="Never"/>
+    <disable_collisions link1="knee_R_Link" link2="link1" reason="Never"/>
+    <disable_collisions link1="knee_R_Link" link2="link2" reason="Never"/>
+    <disable_collisions link1="knee_R_Link" link2="link3" reason="Never"/>
+    <disable_collisions link1="knee_R_Link" link2="link4" reason="Never"/>
+    <disable_collisions link1="limx_imu" link2="link1" reason="Never"/>
+    <disable_collisions link1="limx_imu" link2="link2" reason="Never"/>
+    <disable_collisions link1="link1" link2="link2" reason="Adjacent"/>
+    <disable_collisions link1="link1" link2="link3" reason="Never"/>
+    <disable_collisions link1="link1" link2="link4" reason="Default"/>
+    <disable_collisions link1="link2" link2="link3" reason="Adjacent"/>
+    <disable_collisions link1="link2" link2="link4" reason="Never"/>
+    <disable_collisions link1="link2" link2="link5" reason="Never"/>
+    <disable_collisions link1="link2" link2="link6" reason="Never"/>
+    <disable_collisions link1="link3" link2="link4" reason="Adjacent"/>
+    <disable_collisions link1="link3" link2="link5" reason="Default"/>
+    <disable_collisions link1="link3" link2="link6" reason="Never"/>
+    <disable_collisions link1="link4" link2="link5" reason="Adjacent"/>
+    <disable_collisions link1="link4" link2="link6" reason="Never"/>
+    <disable_collisions link1="link5" link2="link6" reason="Adjacent"/>
+</robot>

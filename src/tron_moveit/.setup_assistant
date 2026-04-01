@@ -1,0 +1,11 @@
+moveit_setup_assistant_config:
+  URDF:
+    package: robot_description
+    relative_path: pointfoot/SF_TRON1A/urdf/robot_with_arm.urdf
+    xacro_args: ""
+  SRDF:
+    relative_path: config/point_foot.srdf
+  CONFIG:
+    author_name: omer
+    author_email: omerfark12@gmail.com
+    generated_timestamp: 1771962596
