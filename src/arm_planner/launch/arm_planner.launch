@@ -1,0 +1,99 @@
+<launch>
+  <!-- ============================================================
+       Arm Planner Launch
+       
+       Launches MoveIt move_group (optionally) and the arm_planner_node
+       for collision-aware trajectory planning and RL EE control.
+       ============================================================ -->
+
+  <!-- Whether to launch move_group (set false if already running) -->
+  <arg name="launch_move_group" default="true"/>
+
+  <!-- Joint state topic from the robot hardware -->
+  <arg name="joint_state_topic" default="/pointfoot_hw/joint_states"/>
+
+  <!-- Whether to launch RViz -->
+  <arg name="launch_rviz" default="false"/>
+  <arg name="rviz_config" default="$(find arm_planner)/launch/arm_planner.rviz"/>
+  <arg name="rviz_software_rendering" default="true"/>
+
+  <!-- Arm planner parameters for the feedback-gated /EEPose_cmd_rc path -->
+  <arg name="control_rate"           default="10.0"/>
+  <arg name="path_segment_length"    default="0.03"/>
+  <arg name="max_pos_step"           default="0.02"/>
+  <arg name="max_rpy_step"           default="0.08"/>
+  <arg name="max_command_lead_pos"   default="0.04"/>
+  <arg name="max_command_lead_rpy"   default="0.25"/>
+  <arg name="waypoint_pos_tolerance" default="0.015"/>
+  <arg name="waypoint_rpy_tolerance" default="0.12"/>
+  <arg name="min_progress_delta"     default="0.003"/>
+  <arg name="stall_warning_sec"      default="2.0"/>
+  <arg name="log_interval_sec"       default="0.5"/>
+  <arg name="settle_time"            default="0.5"/>
+  <arg name="gripper_state"          default="0.0"/>
+
+  <!-- ============================================================
+       MoveIt Move Group
+       ============================================================ -->
+  <group if="$(arg launch_move_group)">
+    <!-- Load URDF to parameter server -->
+    <include file="$(find tron_moveit)/launch/planning_context.launch">
+      <arg name="load_robot_description" value="true"/>
+    </include>
+
+    <!-- Publish link TFs for RViz from the loaded robot_description and live joint states -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+          output="screen">
+      <remap from="/joint_states" to="$(arg joint_state_topic)"/>
+      <remap from="joint_states" to="$(arg joint_state_topic)"/>
+    </node>
+
+    <!-- Launch move_group with the correct joint state topic -->
+    <include file="$(find tron_moveit)/launch/move_group.launch">
+      <arg name="allow_trajectory_execution" value="true"/>
+      <arg name="moveit_controller_manager" value="fake"/>
+      <arg name="joint_state_topic" value="$(arg joint_state_topic)"/>
+    </include>
+  </group>
+
+  <!-- Remap /joint_states -> robot's joint state topic for TF etc. -->
+  <node name="joint_state_relay" pkg="topic_tools" type="relay"
+        args="$(arg joint_state_topic) /joint_states"
+        output="screen" if="$(arg launch_move_group)"/>
+
+  <!-- ============================================================
+       Arm Planner Node
+       ============================================================ -->
+  <node name="arm_planner_node" pkg="arm_planner" type="arm_planner_node.py"
+        output="screen" respawn="false">
+    <param name="joint_state_topic"      value="$(arg joint_state_topic)"/>
+    <param name="control_rate"           value="$(arg control_rate)"/>
+    <param name="path_segment_length"    value="$(arg path_segment_length)"/>
+    <param name="max_pos_step"           value="$(arg max_pos_step)"/>
+    <param name="max_rpy_step"           value="$(arg max_rpy_step)"/>
+    <param name="max_command_lead_pos"   value="$(arg max_command_lead_pos)"/>
+    <param name="max_command_lead_rpy"   value="$(arg max_command_lead_rpy)"/>
+    <param name="waypoint_pos_tolerance" value="$(arg waypoint_pos_tolerance)"/>
+    <param name="waypoint_rpy_tolerance" value="$(arg waypoint_rpy_tolerance)"/>
+    <param name="min_progress_delta"     value="$(arg min_progress_delta)"/>
+    <param name="stall_warning_sec"      value="$(arg stall_warning_sec)"/>
+    <param name="log_interval_sec"       value="$(arg log_interval_sec)"/>
+    <param name="settle_time"            value="$(arg settle_time)"/>
+    <param name="gripper_state"          value="$(arg gripper_state)"/>
+  </node>
+
+  <!-- ============================================================
+       RViz
+       ============================================================ -->
+  <group if="$(arg launch_rviz)">
+    <node if="$(arg rviz_software_rendering)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(arg rviz_config)" output="screen">
+      <!-- WSLg's D3D12 OpenGL path can drop STL/mesh visuals even when collision geometry renders correctly -->
+      <env name="LIBGL_ALWAYS_SOFTWARE" value="1"/>
+    </node>
+
+    <node unless="$(arg rviz_software_rendering)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(arg rviz_config)" output="screen"/>
+  </group>
+
+</launch>

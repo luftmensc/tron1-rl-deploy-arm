@@ -1,0 +1,22 @@
+<launch>
+  <!-- Slider limits -->
+  <arg name="xyz_min" default="-0.01"/>
+  <arg name="xyz_max" default="0.01"/>
+  <arg name="rpy_min" default="-0.05"/>
+  <arg name="rpy_max" default="0.05"/>
+
+  <!-- Publish rate (Hz) -->
+  <arg name="rate" default="25.0"/>
+
+  <!-- Topic -->
+  <arg name="topic" default="/EEPose_cmd_rc"/>
+
+  <node name="ee_rc_slider_gui" pkg="arm_planner" type="ee_rc_slider_gui.py" output="screen">
+    <param name="xyz_min" value="$(arg xyz_min)"/>
+    <param name="xyz_max" value="$(arg xyz_max)"/>
+    <param name="rpy_min" value="$(arg rpy_min)"/>
+    <param name="rpy_max" value="$(arg rpy_max)"/>
+    <param name="rate"    value="$(arg rate)"/>
+    <param name="topic"   value="$(arg topic)"/>
+  </node>
+</launch>
