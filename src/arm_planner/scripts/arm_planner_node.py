@@ -116,6 +116,8 @@ class ArmPlannerNode:
         self.js_lock = threading.Lock()
         self.executing = False
         self.cancel_requested = False
+        self.execution_done = threading.Event()
+        self.execution_done.set()  # not executing initially
 
         # Controller feedback state (from /rc_ee_cmd_state)
         self.rc_ee_cmd_state = None
@@ -159,8 +161,8 @@ class ArmPlannerNode:
             Float32MultiArray,
             self._goal_joint_angles_cb,
         )
-        self.cancel_sub = rospy.Subscriber(
-            "/arm_planner/cancel", String, self._cancel_cb
+        self.stop_sub = rospy.Subscriber(
+            "/arm_planner/stop", String, self._stop_cb
         )
         self.rc_ee_cmd_sub = rospy.Subscriber(
             "/rc_ee_cmd_state", Float32MultiArray, self._rc_ee_cmd_cb
@@ -243,6 +245,16 @@ class ArmPlannerNode:
                 return None
             return copy.deepcopy(self.rc_ee_cmd_state)
 
+    def _abort_execution(self, reason="preempted"):
+        """Abort any running trajectory execution and wait for it to finish."""
+        if not self.executing:
+            return
+        rospy.loginfo("Aborting execution: %s", reason)
+        self.cancel_requested = True
+        self.execution_done.wait(timeout=5.0)
+        if self.executing:
+            rospy.logwarn("Execution did not stop within timeout")
+
     def _goal_pose_cb(self, msg):
         pose_name = msg.data.strip()
         if not pose_name:
@@ -250,9 +262,7 @@ class ArmPlannerNode:
             return
 
         if self.executing:
-            rospy.logwarn("Already executing, ignoring goal: %s", pose_name)
-            self._publish_status("busy", "Already executing a trajectory")
-            return
+            self._abort_execution("new named pose goal: {}".format(pose_name))
 
         rospy.loginfo("Received goal pose: %s", pose_name)
         worker = threading.Thread(target=self._plan_and_execute, args=(pose_name,))
@@ -266,13 +276,12 @@ class ArmPlannerNode:
             rospy.logerr("Cartesian goal needs 6 values, got %d", len(msg.data))
             return
 
-        if self.executing:
-            rospy.logwarn("Already executing, ignoring Cartesian goal")
-            self._publish_status("busy", "Already executing a trajectory")
-            return
-
         x, y, z = float(msg.data[0]), float(msg.data[1]), float(msg.data[2])
         roll, pitch, yaw = float(msg.data[3]), float(msg.data[4]), float(msg.data[5])
+
+        if self.executing:
+            self._abort_execution("new Cartesian goal")
+
         rospy.loginfo(
             "Received Cartesian goal: pos=[%.3f, %.3f, %.3f] rpy=[%.3f, %.3f, %.3f]",
             x, y, z, roll, pitch, yaw,
@@ -297,12 +306,11 @@ class ArmPlannerNode:
             )
             return
 
-        if self.executing:
-            rospy.logwarn("Already executing, ignoring joint angle goal")
-            self._publish_status("busy", "Already executing a trajectory")
-            return
-
         joint_values = [float(v) for v in msg.data[: len(self.ARM_JOINT_NAMES)]]
+
+        if self.executing:
+            self._abort_execution("new joint angle goal")
+
         rospy.loginfo(
             "Received joint angle goal: %s",
             [round(v, 4) for v in joint_values],
@@ -313,10 +321,10 @@ class ArmPlannerNode:
         worker.daemon = True
         worker.start()
 
-    def _cancel_cb(self, _msg):
-        if self.executing:
-            self.cancel_requested = True
-            rospy.loginfo("Cancel requested")
+    def _stop_cb(self, _msg):
+        """Stop current execution immediately without starting a new plan."""
+        self._abort_execution("stop requested")
+        self._publish_status("stopped", "Execution stopped by user")
 
     def _get_arm_positions(self):
         with self.js_lock:
@@ -426,6 +434,7 @@ class ArmPlannerNode:
     def _plan_and_execute(self, pose_name):
         self.executing = True
         self.cancel_requested = False
+        self.execution_done.clear()
 
         try:
             self._publish_status("planning", pose_name)
@@ -507,11 +516,13 @@ class ArmPlannerNode:
             self._publish_status("error", str(exc))
         finally:
             self.executing = False
+            self.execution_done.set()
 
     def _plan_and_execute_joints(self, joint_values):
         """Plan and execute to explicit joint angles [J1..J6] in radians."""
         self.executing = True
         self.cancel_requested = False
+        self.execution_done.clear()
         label = "joints({})".format(
             ",".join("{:.3f}".format(v) for v in joint_values)
         )
@@ -580,11 +591,13 @@ class ArmPlannerNode:
             self._publish_status("error", str(exc))
         finally:
             self.executing = False
+            self.execution_done.set()
 
     def _plan_and_execute_cartesian(self, x, y, z, roll, pitch, yaw):
         """Plan and execute to a Cartesian pose [x,y,z,roll,pitch,yaw] in base_Link frame."""
         self.executing = True
         self.cancel_requested = False
+        self.execution_done.clear()
         label = "cartesian({:.3f},{:.3f},{:.3f})".format(x, y, z)
 
         try:
@@ -664,6 +677,7 @@ class ArmPlannerNode:
             self._publish_status("error", str(exc))
         finally:
             self.executing = False
+            self.execution_done.set()
 
     def _compute_fk_trajectory(self, robot_trajectory):
         joint_trajectory = robot_trajectory.joint_trajectory
