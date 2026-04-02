@@ -61,7 +61,7 @@ PointfootCfg:
     ankle_joint_damping: 2.0 #1
 
     arm_j123_stiffness: 18
-    arm_j123_damping: 1
+    arm_j123_damping: 6
     arm_j456_stiffness: 4
     arm_j456_damping: 0.5
 
