@@ -36,7 +36,7 @@ import numpy as np
 import rospy
 import tf.transformations as tf_trans
 
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Pose, PoseStamped
 from moveit_msgs.msg import RobotState as RobotStateMsg
 from moveit_msgs.srv import GetPositionFK, GetPositionFKRequest
 from sensor_msgs.msg import JointState
@@ -149,6 +149,16 @@ class ArmPlannerNode:
         self.goal_sub = rospy.Subscriber(
             "/arm_planner/goal_pose", String, self._goal_pose_cb
         )
+        self.goal_cartesian_sub = rospy.Subscriber(
+            "/arm_planner/goal_pose_cartesian",
+            Float32MultiArray,
+            self._goal_pose_cartesian_cb,
+        )
+        self.goal_joints_sub = rospy.Subscriber(
+            "/arm_planner/goal_joint_angles",
+            Float32MultiArray,
+            self._goal_joint_angles_cb,
+        )
         self.cancel_sub = rospy.Subscriber(
             "/arm_planner/cancel", String, self._cancel_cb
         )
@@ -246,6 +256,60 @@ class ArmPlannerNode:
 
         rospy.loginfo("Received goal pose: %s", pose_name)
         worker = threading.Thread(target=self._plan_and_execute, args=(pose_name,))
+        worker.daemon = True
+        worker.start()
+
+    def _goal_pose_cartesian_cb(self, msg):
+        """Callback for Cartesian goal: Float32MultiArray [x, y, z, roll, pitch, yaw] in base_Link frame."""
+        if len(msg.data) < 6:
+            self._publish_status("error", "Cartesian goal needs 6 values: [x, y, z, roll, pitch, yaw]")
+            rospy.logerr("Cartesian goal needs 6 values, got %d", len(msg.data))
+            return
+
+        if self.executing:
+            rospy.logwarn("Already executing, ignoring Cartesian goal")
+            self._publish_status("busy", "Already executing a trajectory")
+            return
+
+        x, y, z = float(msg.data[0]), float(msg.data[1]), float(msg.data[2])
+        roll, pitch, yaw = float(msg.data[3]), float(msg.data[4]), float(msg.data[5])
+        rospy.loginfo(
+            "Received Cartesian goal: pos=[%.3f, %.3f, %.3f] rpy=[%.3f, %.3f, %.3f]",
+            x, y, z, roll, pitch, yaw,
+        )
+        worker = threading.Thread(
+            target=self._plan_and_execute_cartesian,
+            args=(x, y, z, roll, pitch, yaw),
+        )
+        worker.daemon = True
+        worker.start()
+
+    def _goal_joint_angles_cb(self, msg):
+        """Callback for joint-angle goal: Float32MultiArray [J1..J6] in radians."""
+        if len(msg.data) < len(self.ARM_JOINT_NAMES):
+            self._publish_status(
+                "error",
+                "Joint angle goal needs {} values ({}), got {}".format(
+                    len(self.ARM_JOINT_NAMES),
+                    ", ".join(self.ARM_JOINT_NAMES),
+                    len(msg.data),
+                ),
+            )
+            return
+
+        if self.executing:
+            rospy.logwarn("Already executing, ignoring joint angle goal")
+            self._publish_status("busy", "Already executing a trajectory")
+            return
+
+        joint_values = [float(v) for v in msg.data[: len(self.ARM_JOINT_NAMES)]]
+        rospy.loginfo(
+            "Received joint angle goal: %s",
+            [round(v, 4) for v in joint_values],
+        )
+        worker = threading.Thread(
+            target=self._plan_and_execute_joints, args=(joint_values,)
+        )
         worker.daemon = True
         worker.start()
 
@@ -440,6 +504,163 @@ class ArmPlannerNode:
                 self._publish_status("done", pose_name)
         except Exception as exc:
             rospy.logerr("Error in plan_and_execute: %s", str(exc))
+            self._publish_status("error", str(exc))
+        finally:
+            self.executing = False
+
+    def _plan_and_execute_joints(self, joint_values):
+        """Plan and execute to explicit joint angles [J1..J6] in radians."""
+        self.executing = True
+        self.cancel_requested = False
+        label = "joints({})".format(
+            ",".join("{:.3f}".format(v) for v in joint_values)
+        )
+
+        try:
+            self._publish_status("planning", label)
+
+            full_joint_state = self._get_full_joint_state_copy()
+            if full_joint_state is None:
+                self._publish_status("error", "No joint states available")
+                return
+
+            start_state = RobotStateMsg()
+            start_state.joint_state = full_joint_state
+            self.move_group.set_start_state(start_state)
+
+            target_dict = dict(zip(self.ARM_JOINT_NAMES, joint_values))
+            self.move_group.set_joint_value_target(target_dict)
+
+            rospy.loginfo("Planning to joint angles %s ...", label)
+            plan_result = self.move_group.plan()
+            if isinstance(plan_result, tuple):
+                success = plan_result[0]
+                plan = plan_result[1]
+            else:
+                plan = plan_result
+                success = bool(plan.joint_trajectory.points)
+
+            if not success or not plan.joint_trajectory.points:
+                self._publish_status("error", "MoveIt planning failed for joint angle goal")
+                rospy.logerr("Planning to joint angles %s failed", label)
+                return
+
+            joint_waypoints = len(plan.joint_trajectory.points)
+            duration = plan.joint_trajectory.points[-1].time_from_start.to_sec()
+            rospy.loginfo(
+                "Plan OK for '%s': %d joint waypoints, %.2fs nominal duration",
+                label, joint_waypoints, duration,
+            )
+
+            self._publish_status("computing_fk", "Computing EE trajectory")
+            ee_trajectory = self._compute_fk_trajectory(plan)
+            if not ee_trajectory:
+                self._publish_status("error", "FK computation failed for all waypoints")
+                return
+
+            dense_trajectory = self._densify_trajectory(ee_trajectory)
+            self._publish_trajectory_markers(dense_trajectory)
+
+            rospy.loginfo(
+                "EE trajectory for '%s': raw=%d dense=%d start=%s goal=%s",
+                label, len(ee_trajectory), len(dense_trajectory),
+                self._fmt_vector(dense_trajectory[0]["position"]),
+                self._fmt_vector(dense_trajectory[-1]["position"]),
+            )
+
+            self._publish_status("executing", label)
+            self._execute_trajectory(label, dense_trajectory)
+
+            if self.cancel_requested:
+                self._publish_status("cancelled", label)
+            else:
+                self._publish_status("done", label)
+        except Exception as exc:
+            rospy.logerr("Error in plan_and_execute_joints: %s", str(exc))
+            self._publish_status("error", str(exc))
+        finally:
+            self.executing = False
+
+    def _plan_and_execute_cartesian(self, x, y, z, roll, pitch, yaw):
+        """Plan and execute to a Cartesian pose [x,y,z,roll,pitch,yaw] in base_Link frame."""
+        self.executing = True
+        self.cancel_requested = False
+        label = "cartesian({:.3f},{:.3f},{:.3f})".format(x, y, z)
+
+        try:
+            self._publish_status("planning", label)
+
+            full_joint_state = self._get_full_joint_state_copy()
+            if full_joint_state is None:
+                self._publish_status("error", "No joint states available")
+                return
+
+            start_state = RobotStateMsg()
+            start_state.joint_state = full_joint_state
+            self.move_group.set_start_state(start_state)
+
+            # Build a PoseStamped target in the FK_FRAME (base_Link)
+            quat = tf_trans.quaternion_from_euler(roll, pitch, yaw, axes="sxyz")
+            target_pose = Pose()
+            target_pose.position.x = x
+            target_pose.position.y = y
+            target_pose.position.z = z
+            target_pose.orientation.x = quat[0]
+            target_pose.orientation.y = quat[1]
+            target_pose.orientation.z = quat[2]
+            target_pose.orientation.w = quat[3]
+
+            self.move_group.set_pose_target(target_pose, self.EE_LINK)
+
+            rospy.loginfo("Planning to Cartesian pose %s ...", label)
+            plan_result = self.move_group.plan()
+            if isinstance(plan_result, tuple):
+                success = plan_result[0]
+                plan = plan_result[1]
+            else:
+                plan = plan_result
+                success = bool(plan.joint_trajectory.points)
+
+            # Clear the pose target after planning
+            self.move_group.clear_pose_targets()
+
+            if not success or not plan.joint_trajectory.points:
+                self._publish_status("error", "MoveIt planning failed for Cartesian goal")
+                rospy.logerr("Planning to Cartesian pose %s failed", label)
+                return
+
+            joint_waypoints = len(plan.joint_trajectory.points)
+            duration = plan.joint_trajectory.points[-1].time_from_start.to_sec()
+            rospy.loginfo(
+                "Plan OK for '%s': %d joint waypoints, %.2fs nominal duration",
+                label, joint_waypoints, duration,
+            )
+
+            self._publish_status("computing_fk", "Computing EE trajectory")
+            ee_trajectory = self._compute_fk_trajectory(plan)
+            if not ee_trajectory:
+                self._publish_status("error", "FK computation failed for all waypoints")
+                return
+
+            dense_trajectory = self._densify_trajectory(ee_trajectory)
+            self._publish_trajectory_markers(dense_trajectory)
+
+            rospy.loginfo(
+                "EE trajectory for '%s': raw=%d dense=%d start=%s goal=%s",
+                label, len(ee_trajectory), len(dense_trajectory),
+                self._fmt_vector(dense_trajectory[0]["position"]),
+                self._fmt_vector(dense_trajectory[-1]["position"]),
+            )
+
+            self._publish_status("executing", label)
+            self._execute_trajectory(label, dense_trajectory)
+
+            if self.cancel_requested:
+                self._publish_status("cancelled", label)
+            else:
+                self._publish_status("done", label)
+        except Exception as exc:
+            rospy.logerr("Error in plan_and_execute_cartesian: %s", str(exc))
             self._publish_status("error", str(exc))
         finally:
             self.executing = False
